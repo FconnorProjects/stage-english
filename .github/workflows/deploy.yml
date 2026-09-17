@@ -59,13 +59,21 @@ jobs:
 
           if [ -z "$STAGE_ID" ]; then
             echo "No Stage ID found. Creating a new Chub Stage..."
-            curl --fail-with-body \
+
+            HTTP_STATUS=$(curl -sS \
+              -o creation.json \
+              -w "%{http_code}" \
               -H "CH-API-KEY: $CHUB_AUTH_TOKEN" \
               -H "Content-Type: application/json" \
               --request POST \
               --data '{"name":"${{ github.event.repository.name }}"}' \
-              https://api.chub.ai/extensions \
-              -o creation.json
+              https://api.chub.ai/extensions)
+
+            if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+              echo "Chub Stage creation failed with HTTP $HTTP_STATUS. Response:"
+              cat creation.json
+              exit 1
+            fi
 
             STAGE_ID=$(jq -r '.id_v2 // empty' creation.json)
 
@@ -105,7 +113,17 @@ jobs:
         env:
           CHUB_AUTH_TOKEN: ${{ secrets.CHUB_AUTH_TOKEN }}
         run: |
-          curl --fail-with-body \
+          HTTP_STATUS=$(curl -sS \
+            -o upload-response.txt \
+            -w "%{http_code}" \
             -H "CH-API-KEY: $CHUB_AUTH_TOKEN" \
             -F "file=@build.zip" \
-            "https://api.chub.ai/extension/${STAGE_ID}/upload"
+            "https://api.chub.ai/extension/${STAGE_ID}/upload")
+
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "Chub upload failed with HTTP $HTTP_STATUS. Response:"
+            cat upload-response.txt
+            exit 1
+          fi
+
+          cat upload-response.txt
